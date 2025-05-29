@@ -135,7 +135,6 @@
       document.body.appendChild(renderer.domElement);
       document.body.appendChild(VRButton.createButton(renderer));
 
-      // Controlador VR para disparar
       controller = renderer.xr.getController(0);
       controller.addEventListener('select', shoot);
       controller.addEventListener('connected', (event) => {
@@ -155,13 +154,11 @@
       });
       scene.add(controller);
 
-      // Iluminación
       scene.add(new THREE.AmbientLight(0xffffff, 0.5));
       const light = new THREE.DirectionalLight(0xffffff, 1);
       light.position.set(10, 10, 10);
       scene.add(light);
 
-      // Piso
       const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(200, 200),
         new THREE.MeshStandardMaterial({ color: 0x87ceeb })
@@ -169,7 +166,6 @@
       floor.rotation.x = -Math.PI / 2;
       scene.add(floor);
 
-      // Música y sonidos
       audioLoader.load('Luz de Feria.mp3', buffer => {
         backgroundMusic.setBuffer(buffer);
         backgroundMusic.setLoop(true);
@@ -180,7 +176,6 @@
       audioLoader.load('Nice.mp3', buffer => soundBuffers.nice = buffer);
       audioLoader.load('TargetFall.mp3', buffer => soundBuffers.targetFall = buffer);
 
-      // Fondo visual
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load('Feria.png', (texture) => {
         const aspectRatio = window.innerWidth / window.innerHeight;
@@ -194,7 +189,6 @@
         scene.add(fondoSuperior);
       });
 
-      // Objetivos
       const filas = 3;
       const columnas = 5;
       const espaciadoX = 4;
@@ -225,6 +219,7 @@
       renderer.setAnimationLoop(animate);
     }
 
+    // ✅ MODIFICADA
     function shoot(event) {
       if (gameOver) return;
 
@@ -236,17 +231,22 @@
       }
 
       const shooter = event.target;
-      const position = new THREE.Vector3();
+      const origin = new THREE.Vector3();
       const direction = new THREE.Vector3();
-      shooter.getWorldPosition(position);
+
+      shooter.getWorldPosition(origin);
       shooter.getWorldDirection(direction);
+      direction.normalize();
+
+      const start = origin.clone().add(direction.clone().multiplyScalar(0.5));
 
       const sphere = new THREE.Mesh(
-        new THREE.SphereGeometry(0.2, 16, 16),
-        new THREE.MeshStandardMaterial({ color: 0x00ffff })
+        new THREE.SphereGeometry(0.1, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffcc00 })
       );
-      sphere.position.copy(position);
-      sphere.userData.velocity = direction.clone().multiplyScalar(1);
+      sphere.position.copy(start);
+      sphere.userData.velocity = direction.clone().multiplyScalar(0.5);
+
       scene.add(sphere);
       spheres.push(sphere);
     }
