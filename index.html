@@ -25,6 +25,7 @@
       color: white;
       padding: 10px;
       font-family: sans-serif;
+      z-index: 10;
     }
 
     #info {
@@ -60,7 +61,7 @@
 </head>
 
 <body>
-  <div id="info">Usa los controles VR para jugar</div>
+  <div id="info">Coloca el visor VR y presiona el botón para entrar. Apunta y presiona el gatillo para disparar.</div>
   <div id="score">Puntaje: 0</div>
   <div id="timer">Tiempo: 60</div>
   <div id="finalScreen">
@@ -81,10 +82,9 @@
   <script type="module">
     import * as THREE from 'three';
     import { VRButton } from 'three/addons/webxr/VRButton.js';
-    import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    let camera, scene, renderer;
+    let camera, scene, renderer, controller;
     const spheres = [], targets = [];
     let score = 0, timer = 60, gameOver = false;
     const clock = new THREE.Clock();
@@ -98,12 +98,7 @@
     };
     const backgroundMusic = new THREE.Audio(listener);
 
-    const controller1 = new THREE.Group();
-    const controller2 = new THREE.Group();
-    let aimingController = null;
-
     init();
-    animate();
 
     const timerInterval = setInterval(() => {
       if (!gameOver) {
@@ -130,8 +125,9 @@
       scene.background = new THREE.Color(0x87ceeb);
 
       camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-      camera.position.set(0, 2, 10);
+      camera.position.set(0, 1.6, 10);
       camera.add(listener);
+      scene.add(camera);
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
@@ -139,11 +135,33 @@
       document.body.appendChild(renderer.domElement);
       document.body.appendChild(VRButton.createButton(renderer));
 
+      // Controlador VR para disparar
+      controller = renderer.xr.getController(0);
+      controller.addEventListener('select', shoot);
+      controller.addEventListener('connected', (event) => {
+        const targetRay = event.data.targetRayMode;
+        if (targetRay === 'tracked-pointer') {
+          const geometry = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -1)
+          ]);
+          const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0x00ff00 }));
+          line.name = 'pointer';
+          controller.add(line);
+        }
+      });
+      controller.addEventListener('disconnected', () => {
+        controller.remove(controller.getObjectByName('pointer'));
+      });
+      scene.add(controller);
+
+      // Iluminación
       scene.add(new THREE.AmbientLight(0xffffff, 0.5));
       const light = new THREE.DirectionalLight(0xffffff, 1);
       light.position.set(10, 10, 10);
       scene.add(light);
 
+      // Piso
       const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(200, 200),
         new THREE.MeshStandardMaterial({ color: 0x87ceeb })
@@ -151,23 +169,23 @@
       floor.rotation.x = -Math.PI / 2;
       scene.add(floor);
 
+      // Música y sonidos
       audioLoader.load('Luz de Feria.mp3', buffer => {
         backgroundMusic.setBuffer(buffer);
         backgroundMusic.setLoop(true);
         backgroundMusic.setVolume(0.5);
         backgroundMusic.play();
       });
-
       audioLoader.load('Disparo.mp3', buffer => soundBuffers.disparo = buffer);
       audioLoader.load('Nice.mp3', buffer => soundBuffers.nice = buffer);
       audioLoader.load('TargetFall.mp3', buffer => soundBuffers.targetFall = buffer);
 
+      // Fondo visual
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load('Feria.png', (texture) => {
         const aspectRatio = window.innerWidth / window.innerHeight;
         const width = 200;
         const height = width / aspectRatio;
-
         const fondoSuperior = new THREE.Mesh(
           new THREE.PlaneGeometry(width, height),
           new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true })
@@ -176,6 +194,7 @@
         scene.add(fondoSuperior);
       });
 
+      // Objetivos
       const filas = 3;
       const columnas = 5;
       const espaciadoX = 4;
@@ -189,46 +208,24 @@
             new THREE.BoxGeometry(1, 1, 1),
             new THREE.MeshStandardMaterial({ color: color })
           );
-
           box.position.set(-8 + j * espaciadoX, 0.5 + i * espaciadoY, -5);
-
-          box.userData.velocity = new THREE.Vector3(0.05, 0, 0);
-          box.userData.falling = false;
-          box.userData.respawnTime = 0;
-          box.userData.row = i;
-          box.userData.initialX = box.position.x;
+          box.userData = {
+            velocity: new THREE.Vector3(0.05, 0, 0),
+            falling: false,
+            respawnTime: 0,
+            row: i,
+            initialX: box.position.x
+          };
           scene.add(box);
           targets.push(box);
         }
       }
 
-      const controllerModelFactory = new XRControllerModelFactory();
-
-      const setupController = (controller, index) => {
-        controller.userData.index = index;
-        controller.addEventListener('selectstart', shoot);
-        controller.add(controllerModelFactory.createControllerModel(controller));
-        scene.add(controller);
-      };
-
-      const controllerGrip1 = renderer.xr.getControllerGrip(0);
-      controller1.add(renderer.xr.getController(0));
-      setupController(controller1, 0);
-      scene.add(controller1);
-      scene.add(controllerGrip1);
-
-      const controllerGrip2 = renderer.xr.getControllerGrip(1);
-      controller2.add(renderer.xr.getController(1));
-      setupController(controller2, 1);
-      scene.add(controller2);
-      scene.add(controllerGrip2);
-
-      aimingController = controller1; // Puedes cambiar entre controller1 o controller2
-
       window.addEventListener('resize', onWindowResize);
+      renderer.setAnimationLoop(animate);
     }
 
-    function shoot() {
+    function shoot(event) {
       if (gameOver) return;
 
       if (soundBuffers.disparo) {
@@ -238,14 +235,18 @@
         disparo.play();
       }
 
-      const geometry = new THREE.SphereGeometry(0.2, 16, 16);
-      const material = new THREE.MeshStandardMaterial({ color: 0x00ffff });
-      const sphere = new THREE.Mesh(geometry, material);
+      const shooter = event.target;
+      const position = new THREE.Vector3();
+      const direction = new THREE.Vector3();
+      shooter.getWorldPosition(position);
+      shooter.getWorldDirection(direction);
 
-      sphere.position.copy(aimingController.position);
-      const dir = new THREE.Vector3();
-      aimingController.getWorldDirection(dir);
-      sphere.userData.velocity = dir.clone().multiplyScalar(1);
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x00ffff })
+      );
+      sphere.position.copy(position);
+      sphere.userData.velocity = direction.clone().multiplyScalar(1);
       scene.add(sphere);
       spheres.push(sphere);
     }
@@ -255,63 +256,68 @@
     }
 
     function animate() {
-      renderer.setAnimationLoop(() => {
-        if (gameOver) return;
+      if (gameOver) return;
 
-        const delta = clock.getDelta();
+      const delta = clock.getDelta();
 
-        for (const ball of spheres) {
-          ball.position.add(ball.userData.velocity.clone().multiplyScalar(delta * 60));
+      for (let i = spheres.length - 1; i >= 0; i--) {
+        const ball = spheres[i];
+        ball.position.add(ball.userData.velocity);
+        if (ball.position.length() > 100) {
+          scene.remove(ball);
+          spheres.splice(i, 1);
         }
+      }
 
+      for (const target of targets) {
+        if (!target.userData.falling) {
+          target.position.add(target.userData.velocity);
+          if (target.position.x > 10 || target.position.x < -10) {
+            target.userData.velocity.x *= -1;
+          }
+        } else {
+          target.position.y -= 0.05;
+          target.userData.respawnTime -= delta;
+          if (target.position.y < -2 && target.userData.respawnTime <= 0) {
+            target.position.set(
+              target.userData.initialX + (Math.random() * 2 - 1),
+              0.5 + target.userData.row * 2,
+              -5
+            );
+            target.userData.falling = false;
+            target.userData.respawnTime = 0.5 + Math.random();
+          }
+        }
+      }
+
+      for (const ball of spheres) {
         for (const target of targets) {
-          if (!target.userData.falling) {
-            target.position.add(target.userData.velocity);
-            if (target.position.x > 10 || target.position.x < -10) {
-              target.userData.velocity.x *= -1;
+          if (!target.userData.falling && ball.position.distanceTo(target.position) < 0.6) {
+            target.userData.falling = true;
+            target.userData.respawnTime = 0.5 + Math.random();
+            score += 10;
+            updateScore();
+
+            if (soundBuffers.nice) {
+              const nice = new THREE.Audio(listener);
+              nice.setBuffer(soundBuffers.nice);
+              nice.setVolume(1);
+              nice.play();
             }
-          } else {
-            target.position.y -= 0.05;
-            target.userData.respawnTime -= delta;
-            if (target.position.y < -2 && target.userData.respawnTime <= 0) {
-              target.position.set(
-                target.userData.initialX + (Math.random() * 2 - 1),
-                0.5 + target.userData.row * 2,
-                -5
-              );
-              target.userData.falling = false;
-              target.userData.respawnTime = 0.5 + Math.random();
+
+            if (soundBuffers.targetFall) {
+              const fall = new THREE.Audio(listener);
+              fall.setBuffer(soundBuffers.targetFall);
+              fall.setVolume(1);
+              fall.play();
             }
+
+            break;
           }
         }
+      }
 
-        for (const ball of spheres) {
-          for (const target of targets) {
-            if (!target.userData.falling && ball.position.distanceTo(target.position) < 0.6) {
-              target.userData.falling = true;
-              target.userData.respawnTime = 0.5 + Math.random();
-              score += 10;
-              updateScore();
-
-              if (soundBuffers.nice) {
-                const nice = new THREE.Audio(listener);
-                nice.setBuffer(soundBuffers.nice);
-                nice.setVolume(1);
-                nice.play();
-              }
-
-              if (soundBuffers.targetFall) {
-                const fall = new THREE.Audio(listener);
-                fall.setBuffer(soundBuffers.targetFall);
-                fall.setVolume(1);
-                fall.play();
-              }
-            }
-          }
-        }
-
-        renderer.render(scene, camera);
-      });
+      renderer.render(scene, camera);
     }
 
     function onWindowResize() {
