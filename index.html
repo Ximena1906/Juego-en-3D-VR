@@ -61,7 +61,7 @@
 </head>
 
 <body>
-  <div id="info">Coloca el visor VR y presiona el botón para entrar. Apunta y presiona el gatillo para disparar.</div>
+  <div id="info">Coloca el visor VR y presiona el botón para entrar. O haz clic o presiona barra espaciadora para disparar.</div>
   <div id="score">Puntaje: 0</div>
   <div id="timer">Tiempo: 60</div>
   <div id="finalScreen">
@@ -129,18 +129,25 @@
       camera.add(listener);
       scene.add(camera);
 
+      // Prueba visual: esfera fija frente a cámara
+      const testSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2),
+        new THREE.MeshBasicMaterial({ color: 0xff00ff })
+      );
+      testSphere.position.set(0, 1.6, -2);
+      camera.add(testSphere);
+
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
       document.body.appendChild(VRButton.createButton(renderer));
 
-      // Controlador VR para disparar
+      // Controlador VR
       controller = renderer.xr.getController(0);
       controller.addEventListener('select', shoot);
       controller.addEventListener('connected', (event) => {
-        const targetRay = event.data.targetRayMode;
-        if (targetRay === 'tracked-pointer') {
+        if (event.data.targetRayMode === 'tracked-pointer') {
           const geometry = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(0, 0, 0),
             new THREE.Vector3(0, 0, -1)
@@ -218,6 +225,12 @@
         }
       }
 
+      // Disparo con clic o barra espaciadora
+      window.addEventListener('click', shoot);
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') shoot();
+      });
+
       window.addEventListener('resize', onWindowResize);
       renderer.setAnimationLoop(animate);
     }
@@ -232,19 +245,23 @@
         disparo.play();
       }
 
-      const shooter = event.target;
       const origin = new THREE.Vector3();
       const direction = new THREE.Vector3();
 
-      shooter.getWorldPosition(origin);
-      shooter.getWorldDirection(direction);
-      direction.normalize();
+      if (event && event.target && event.target.getWorldPosition) {
+        event.target.getWorldPosition(origin);
+        event.target.getWorldDirection(direction);
+      } else {
+        camera.getWorldPosition(origin);
+        camera.getWorldDirection(direction);
+      }
 
+      direction.normalize();
       const start = origin.clone().add(direction.clone().multiplyScalar(1.5));
 
       const sphere = new THREE.Mesh(
-        new THREE.SphereGeometry(0.1, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0xffff00 }) // Amarillo brillante
+        new THREE.SphereGeometry(0.2, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffff00 })
       );
       sphere.position.copy(start);
       sphere.userData.velocity = direction.clone().multiplyScalar(0.5);
