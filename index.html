@@ -98,7 +98,8 @@
     };
     const backgroundMusic = new THREE.Audio(listener);
 
-    let controller1, controller2;
+    const controller1 = new THREE.Group();
+    const controller2 = new THREE.Group();
     let aimingController = null;
 
     init();
@@ -142,6 +143,11 @@
       const light = new THREE.DirectionalLight(0xffffff, 1);
       light.position.set(10, 10, 10);
       scene.add(light);
+
+      // Luz puntual para iluminar las pelotas
+      const pointLight = new THREE.PointLight(0xffffff, 1);
+      pointLight.position.set(0, 2, 5);
+      scene.add(pointLight);
 
       const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(200, 200),
@@ -203,34 +209,32 @@
 
       const controllerModelFactory = new XRControllerModelFactory();
 
-      // Setup controlador 1
-      controller1 = renderer.xr.getController(0);
-      controller1.addEventListener('selectstart', shoot);
-      scene.add(controller1);
+      const setupController = (controller, index) => {
+        controller.userData.index = index;
+        controller.addEventListener('selectstart', shoot);
+        controller.add(controllerModelFactory.createControllerModel(controller));
+        scene.add(controller);
+      };
 
       const controllerGrip1 = renderer.xr.getControllerGrip(0);
-      controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+      controller1.add(renderer.xr.getController(0));
+      setupController(controller1, 0);
+      scene.add(controller1);
       scene.add(controllerGrip1);
 
-      // Setup controlador 2
-      controller2 = renderer.xr.getController(1);
-      controller2.addEventListener('selectstart', shoot);
-      scene.add(controller2);
-
       const controllerGrip2 = renderer.xr.getControllerGrip(1);
-      controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+      controller2.add(renderer.xr.getController(1));
+      setupController(controller2, 1);
+      scene.add(controller2);
       scene.add(controllerGrip2);
 
-      aimingController = controller1; // Puedes alternar con controller2 si quieres
+      aimingController = controller1; // Puedes cambiar entre controller1 o controller2
 
       window.addEventListener('resize', onWindowResize);
     }
 
-    function shoot(event) {
+    function shoot() {
       if (gameOver) return;
-
-      // Usamos el controlador que lanzó el evento para posicionar la bola
-      const controller = event.target;
 
       if (soundBuffers.disparo) {
         const disparo = new THREE.Audio(listener);
@@ -240,16 +244,14 @@
       }
 
       const geometry = new THREE.SphereGeometry(0.2, 16, 16);
-      const material = new THREE.MeshStandardMaterial({ color: 0x00ffff });
+      const material = new THREE.MeshBasicMaterial({ color: 0xffff00 }); // amarillo más visible
       const sphere = new THREE.Mesh(geometry, material);
 
-      // Posicionamos la bola en el controlador que dispara
-      sphere.position.setFromMatrixPosition(controller.matrixWorld);
-
-      // Dirección del controlador para velocidad de la bola
+      sphere.position.copy(aimingController.position);
       const dir = new THREE.Vector3();
-      controller.getWorldDirection(dir);
-      sphere.userData.velocity = dir.clone().multiplyScalar(1);
+      aimingController.getWorldDirection(dir);
+      sphere.position.add(dir.clone().multiplyScalar(0.2)); // pequeño offset adelante
+      sphere.userData.velocity = dir.clone().multiplyScalar(0.5); // velocidad reducida para mejor control
 
       scene.add(sphere);
       spheres.push(sphere);
@@ -265,12 +267,12 @@
 
         const delta = clock.getDelta();
 
-        // Mover pelotas lanzadas
+        // Actualiza posición de pelotas
         for (const ball of spheres) {
           ball.position.add(ball.userData.velocity.clone().multiplyScalar(delta * 60));
         }
 
-        // Actualizar targets
+        // Actualiza movimiento y reaparición de blancos
         for (const target of targets) {
           if (!target.userData.falling) {
             target.position.add(target.userData.velocity);
@@ -292,7 +294,7 @@
           }
         }
 
-        // Detectar colisiones pelotas con targets
+        // Detecta colisiones pelotas - blancos
         for (const ball of spheres) {
           for (const target of targets) {
             if (!target.userData.falling && ball.position.distanceTo(target.position) < 0.6) {
