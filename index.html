@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
   <meta charset="utf-8" />
-  <title>Juego VR con Sonido</title>
+  <title>Juego VR con Sonido y Cronómetro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
@@ -14,7 +13,7 @@
       font-family: sans-serif;
     }
 
-    #info, #score, #toggleMusic {
+    #info, #score, #toggleMusic, #timer {
       position: absolute;
       left: 10px;
       z-index: 1;
@@ -26,6 +25,33 @@
     #info { top: 10px; }
     #score { top: 50px; font-size: 1.2em; }
     #toggleMusic { top: 90px; cursor: pointer; }
+    #timer {
+      top: 130px;
+      font-size: 1.2em;
+      left: auto;
+      right: 10px;
+    }
+
+    #gameOverScreen {
+      display: none;
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      padding: 30px;
+      border-radius: 10px;
+      text-align: center;
+      color: white;
+      z-index: 10;
+    }
+
+    #gameOverScreen button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 1em;
+      cursor: pointer;
+    }
 
     canvas { display: block; }
   </style>
@@ -34,7 +60,14 @@
 <body>
   <div id="info">Pon tus lentes Meta Quest 3, entra en VR y presiona el gatillo para disparar.</div>
   <div id="score">Puntaje: 0</div>
+  <div id="timer">Tiempo: 60</div>
   <button id="toggleMusic">Pausar música</button>
+
+  <div id="gameOverScreen">
+    <h2>¡Tiempo terminado!</h2>
+    <p id="finalScore"></p>
+    <button onclick="resetGame()">Reiniciar juego</button>
+  </div>
 
   <script type="importmap">
     {
@@ -52,12 +85,16 @@
     let camera, scene, renderer, controller;
     const spheres = [], targets = [];
     let score = 0;
+    let gameEnded = false;
     const clock = new THREE.Clock();
 
     const listener = new THREE.AudioListener();
     const audioLoader = new THREE.AudioLoader();
     const backgroundMusic = new THREE.Audio(listener);
     let soundBuffer = null;
+
+    let timeLeft = 60;
+    let timerInterval;
 
     init();
     animate();
@@ -133,9 +170,12 @@
 
       window.addEventListener("resize", onWindowResize);
       updateScoreDisplay();
+      startTimer();
     }
 
     function onSelectStart() {
+      if (gameEnded) return;
+
       const sphereGeometry = new THREE.SphereGeometry(0.05, 16, 16);
       const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ffff });
       const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
@@ -166,6 +206,8 @@
     }
 
     function render() {
+      if (gameEnded) return;
+
       const delta = clock.getDelta();
 
       for (let i = spheres.length - 1; i >= 0; i--) {
@@ -224,6 +266,42 @@
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
+
+    function startTimer() {
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          endGame();
+        }
+      }, 1000);
+    }
+
+    function endGame() {
+      gameEnded = true;
+      document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
+      document.getElementById("gameOverScreen").style.display = "block";
+    }
+
+    window.resetGame = function () {
+      score = 0;
+      timeLeft = 60;
+      gameEnded = false;
+      document.getElementById("gameOverScreen").style.display = "none";
+      updateScoreDisplay();
+      document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
+
+      for (const s of spheres) scene.remove(s);
+      spheres.length = 0;
+
+      for (const t of targets) {
+        t.position.set(t.userData.initialX, 0.5 + t.userData.row * 1.5, -2);
+        t.userData.falling = false;
+      }
+
+      startTimer();
+    };
   </script>
 </body>
 </html>
