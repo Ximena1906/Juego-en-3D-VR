@@ -1,48 +1,54 @@
 <!DOCTYPE html>
-<html lang="es">
-
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Juego VR Básico con Targets</title>
+  <title>Juego de Feria VR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: #222;
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+    #info, #score, #timer, #finalScreen, #toggleMusic {
+      position: absolute;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.5);
       color: white;
+      padding: 10px;
       font-family: sans-serif;
+      z-index: 2;
     }
-
-    #info {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 1;
-      background: rgba(0, 0, 0, 0.6);
-      padding: 10px;
-      border-radius: 5px;
+    #info { top: 10px; }
+    #score { top: 50px; }
+    #timer { top: 90px; }
+    #toggleMusic { top: 130px; }
+    #finalScreen {
+      display: none;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      text-align: center;
+      padding: 20px;
+      font-size: 1.5em;
+      z-index: 2;
     }
-
-    #score {
-      position: absolute;
-      top: 50px;
-      left: 10px;
-      background: rgba(0, 0, 0, 0.6);
-      padding: 10px;
-      border-radius: 5px;
-      font-size: 1.2em;
-    }
-
-    canvas {
-      display: block;
+    #finalScreen button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 1em;
+      cursor: pointer;
     }
   </style>
 </head>
-
 <body>
-  <div id="info">Pon tus lentes Meta Quest 3, entra en VR y presiona el gatillo para disparar.</div>
+  <div id="info">Usa los controles VR para jugar</div>
   <div id="score">Puntaje: 0</div>
+  <div id="timer">Tiempo: 60</div>
+  <button id="toggleMusic">Pausar música</button>
+  <div id="finalScreen">
+    <div id="finalMessage">¡Tiempo!</div>
+    <div id="finalScore">Puntaje: 0</div>
+    <button onclick="location.reload()">Jugar de nuevo</button>
+  </div>
 
   <script type="importmap">
     {
@@ -54,31 +60,56 @@
   </script>
 
   <script type="module">
-    import * as THREE from "three";
-    import { VRButton } from "three/addons/webxr/VRButton.js";
+    import * as THREE from 'three';
+    import { VRButton } from 'three/addons/webxr/VRButton.js';
+    import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     let camera, scene, renderer;
-    let controller;
-    const spheres = [];
-    const targets = [];
-    let score = 0;
-
+    const spheres = [], targets = [];
+    let score = 0, timer = 60, gameOver = false;
     const clock = new THREE.Clock();
+
+    const listener = new THREE.AudioListener();
+    const audioLoader = new THREE.AudioLoader();
+    const soundBuffers = {
+      disparo: null,
+      nice: null
+    };
+    const backgroundMusic = new THREE.Audio(listener);
+
+    let controller1, controller2;
 
     init();
     animate();
 
+    const timerInterval = setInterval(() => {
+      if (!gameOver) {
+        if (timer > 0) {
+          timer -= 1;
+          document.getElementById('timer').textContent = `Tiempo: ${timer}`;
+        } else {
+          gameOver = true;
+          clearInterval(timerInterval);
+          document.getElementById('timer').textContent = '¡Tiempo!';
+          showFinalScreen();
+        }
+      }
+    }, 1000);
+
+    function showFinalScreen() {
+      document.getElementById('finalMessage').textContent = '¡Juego Terminado!';
+      document.getElementById('finalScore').textContent = `Puntaje: ${score}`;
+      document.getElementById('finalScreen').style.display = 'block';
+    }
+
     function init() {
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x222222);
+      scene.background = new THREE.Color(0x87ceeb);
 
-      camera = new THREE.PerspectiveCamera(
-        70,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        1000
-      );
-      camera.position.set(0, 1.6, 3);
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 2, 10);
+      camera.add(listener);
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
@@ -86,151 +117,176 @@
       document.body.appendChild(renderer.domElement);
       document.body.appendChild(VRButton.createButton(renderer));
 
-      const light = new THREE.HemisphereLight(0xffffff, 0x444444);
-      light.position.set(0, 1, 0);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+      const light = new THREE.DirectionalLight(0xffffff, 1);
+      light.position.set(10, 10, 10);
       scene.add(light);
 
-      // Piso
-      const floorGeometry = new THREE.PlaneGeometry(10, 10);
-      const floorMaterial = new THREE.MeshStandardMaterial({
-        color: 0x444444,
-        roughness: 1,
-        metalness: 0,
-      });
-      const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(200, 200),
+        new THREE.MeshStandardMaterial({ color: 0x87ceeb })
+      );
       floor.rotation.x = -Math.PI / 2;
-      floor.position.y = 0;
       scene.add(floor);
 
-      // Crear targets (cuadritos)
-      const filas = 2;
-      const columnas = 5;
-      const espaciadoX = 1.8;
-      const espaciadoY = 1.5;
+      audioLoader.load('Luz de Feria.mp3', buffer => {
+        backgroundMusic.setBuffer(buffer);
+        backgroundMusic.setLoop(true);
+        backgroundMusic.setVolume(0.5);
+        backgroundMusic.play();
+      });
+
+      audioLoader.load('Disparo.mp3', buffer => soundBuffers.disparo = buffer);
+      audioLoader.load('Nice.mp3', buffer => soundBuffers.nice = buffer);
+
+      document.getElementById('toggleMusic').addEventListener('click', () => {
+        if (backgroundMusic.isPlaying) {
+          backgroundMusic.pause();
+          document.getElementById('toggleMusic').textContent = 'Reanudar música';
+        } else {
+          backgroundMusic.play();
+          document.getElementById('toggleMusic').textContent = 'Pausar música';
+        }
+      });
+
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.load('Feria.png', texture => {
+        const aspectRatio = window.innerWidth / window.innerHeight;
+        const width = 200;
+        const height = width / aspectRatio;
+
+        const fondoSuperior = new THREE.Mesh(
+          new THREE.PlaneGeometry(width, height),
+          new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true })
+        );
+        fondoSuperior.position.set(0, height / 2 - 30, -50);
+        scene.add(fondoSuperior);
+      });
+
+      const filas = 3, columnas = 5;
+      const espaciadoX = 4, espaciadoY = 2;
+      const colores = [0xff0000, 0x00ff00, 0x0000ff];
 
       for (let i = 0; i < filas; i++) {
         for (let j = 0; j < columnas; j++) {
-          const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-          const material = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(`hsl(${(j * 360) / columnas}, 80%, 60%)`),
-          });
-          const box = new THREE.Mesh(geometry, material);
-
-          box.position.set(
-            -((columnas - 1) * espaciadoX) / 2 + j * espaciadoX,
-            0.5 + i * espaciadoY,
-            -2
+          const color = colores[i % colores.length];
+          const box = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 1, 1),
+            new THREE.MeshStandardMaterial({ color: color })
           );
-
+          box.position.set(-8 + j * espaciadoX, 0.5 + i * espaciadoY, -5);
           box.userData = {
-            velocity: new THREE.Vector3(0.01 + 0.005 * i, 0, 0),
+            velocity: new THREE.Vector3(0.05, 0, 0),
             falling: false,
             respawnTime: 0,
-            initialX: box.position.x,
             row: i,
+            initialX: box.position.x
           };
-
           scene.add(box);
           targets.push(box);
         }
       }
 
-      controller = renderer.xr.getController(0);
-      controller.addEventListener("selectstart", onSelectStart);
-      scene.add(controller);
+      const controllerFactory = new XRControllerModelFactory();
+      controller1 = renderer.xr.getController(0);
+      controller1.addEventListener('selectstart', shoot);
+      scene.add(controller1);
 
-      window.addEventListener("resize", onWindowResize);
+      const grip1 = renderer.xr.getControllerGrip(0);
+      grip1.add(controllerFactory.createControllerModel(grip1));
+      scene.add(grip1);
 
-      updateScoreDisplay();
+      controller2 = renderer.xr.getController(1);
+      controller2.addEventListener('selectstart', shoot);
+      scene.add(controller2);
+
+      const grip2 = renderer.xr.getControllerGrip(1);
+      grip2.add(controllerFactory.createControllerModel(grip2));
+      scene.add(grip2);
+
+      window.addEventListener('resize', onWindowResize);
     }
 
-    function onSelectStart() {
-      // Crear esfera disparo
-      const sphereGeometry = new THREE.SphereGeometry(0.05, 16, 16);
-      const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ffff });
-      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    function shoot(event) {
+      if (gameOver) return;
+      const controller = event.target;
 
-      const tempMatrix = new THREE.Matrix4();
-      tempMatrix.identity().extractRotation(controller.matrixWorld);
+      if (soundBuffers.disparo) {
+        const disparo = new THREE.PositionalAudio(listener);
+        disparo.setBuffer(soundBuffers.disparo);
+        disparo.setVolume(0.8);
+        controller.add(disparo);
+        disparo.play();
+      }
 
-      const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
-      const position = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+      const geometry = new THREE.SphereGeometry(0.2, 16, 16);
+      const material = new THREE.MeshStandardMaterial({ color: 0x00ffff });
+      const sphere = new THREE.Mesh(geometry, material);
+      sphere.position.setFromMatrixPosition(controller.matrixWorld);
 
-      sphere.position.copy(position);
-      sphere.userData.velocity = direction.multiplyScalar(3);
+      const dir = new THREE.Vector3();
+      controller.getWorldDirection(dir);
+      sphere.userData.velocity = dir.clone().multiplyScalar(1);
 
-      spheres.push(sphere);
       scene.add(sphere);
+      spheres.push(sphere);
+    }
+
+    function updateScore() {
+      document.getElementById('score').textContent = `Puntaje: ${score}`;
     }
 
     function animate() {
-      renderer.setAnimationLoop(render);
-    }
+      renderer.setAnimationLoop(() => {
+        if (gameOver) return;
+        const delta = clock.getDelta();
 
-    function render() {
-      const delta = clock.getDelta();
-
-      // Mover esferas disparadas
-      for (let i = spheres.length - 1; i >= 0; i--) {
-        const s = spheres[i];
-        s.position.addScaledVector(s.userData.velocity, delta);
-
-        // Eliminar si se aleja mucho
-        if (s.position.length() > 30) {
-          scene.remove(s);
-          spheres.splice(i, 1);
+        for (const ball of spheres) {
+          ball.position.add(ball.userData.velocity.clone().multiplyScalar(delta * 60));
         }
-      }
 
-      // Mover y actualizar targets
-      for (const target of targets) {
-        if (!target.userData.falling) {
-          target.position.add(target.userData.velocity);
-          if (
-            target.position.x > target.userData.initialX + 1.5 ||
-            target.position.x < target.userData.initialX - 1.5
-          ) {
-            target.userData.velocity.x *= -1;
-          }
-        } else {
-          target.position.y -= 0.05;
-          target.userData.respawnTime -= delta;
-          if (target.position.y < -1 && target.userData.respawnTime <= 0) {
-            target.position.set(
-              target.userData.initialX,
-              0.5 + target.userData.row * 1.5,
-              -2
-            );
-            target.userData.falling = false;
-          }
-        }
-      }
-
-      // Detectar colisiones esfera-target
-      for (let i = spheres.length - 1; i >= 0; i--) {
-        const s = spheres[i];
         for (const target of targets) {
-          if (
-            !target.userData.falling &&
-            s.position.distanceTo(target.position) < 0.3
-          ) {
-            target.userData.falling = true;
-            target.userData.respawnTime = 1;
-            scene.remove(s);
-            spheres.splice(i, 1);
-
-            score += 10;
-            updateScoreDisplay();
-            break;
+          if (!target.userData.falling) {
+            target.position.add(target.userData.velocity);
+            if (target.position.x > 10 || target.position.x < -10) {
+              target.userData.velocity.x *= -1;
+            }
+          } else {
+            target.position.y -= 0.05;
+            target.userData.respawnTime -= delta;
+            if (target.position.y < -2 && target.userData.respawnTime <= 0) {
+              target.position.set(
+                target.userData.initialX + (Math.random() * 2 - 1),
+                0.5 + target.userData.row * 2,
+                -5
+              );
+              target.userData.falling = false;
+              target.userData.respawnTime = 0.5 + Math.random();
+            }
           }
         }
-      }
 
-      renderer.render(scene, camera);
-    }
+        for (const ball of spheres) {
+          for (const target of targets) {
+            if (!target.userData.falling && ball.position.distanceTo(target.position) < 0.6) {
+              target.userData.falling = true;
+              target.userData.respawnTime = 0.5 + Math.random();
+              score += 10;
+              updateScore();
 
-    function updateScoreDisplay() {
-      document.getElementById("score").textContent = `Puntaje: ${score}`;
+              if (soundBuffers.nice) {
+                const nice = new THREE.PositionalAudio(listener);
+                nice.setBuffer(soundBuffers.nice);
+                nice.setVolume(1);
+                target.add(nice);
+                nice.play();
+              }
+            }
+          }
+        }
+
+        renderer.render(scene, camera);
+      });
     }
 
     function onWindowResize() {
@@ -240,5 +296,4 @@
     }
   </script>
 </body>
-
 </html>
