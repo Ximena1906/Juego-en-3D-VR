@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="utf-8" />
-  <title>Juego VR con Sonido y Cronómetro</title>
+  <title>Juego VR con Sonido y HUD VR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
@@ -20,20 +21,33 @@
       background: rgba(0, 0, 0, 0.6);
       padding: 10px;
       border-radius: 5px;
+      user-select: none;
     }
 
-    #info { top: 10px; }
-    #score { top: 50px; font-size: 1.2em; }
-    #toggleMusic { top: 90px; cursor: pointer; }
+    #info {
+      top: 10px;
+    }
+
+    #score {
+      top: 50px;
+      font-size: 1.2em;
+    }
+
+    #toggleMusic {
+      top: 90px;
+      cursor: pointer;
+    }
+
     #timer {
       top: 130px;
       font-size: 1.2em;
-      left: auto;
-      right: 10px;
     }
 
-    #gameOverScreen {
-      display: none;
+    canvas {
+      display: block;
+    }
+
+    #gameOverUI {
       position: absolute;
       top: 40%;
       left: 50%;
@@ -42,18 +56,18 @@
       padding: 30px;
       border-radius: 10px;
       text-align: center;
+      display: none;
+      z-index: 5;
       color: white;
-      z-index: 10;
+      font-size: 1.5em;
     }
 
-    #gameOverScreen button {
+    #gameOverUI button {
       margin-top: 20px;
       padding: 10px 20px;
       font-size: 1em;
       cursor: pointer;
     }
-
-    canvas { display: block; }
   </style>
 </head>
 
@@ -63,10 +77,9 @@
   <div id="timer">Tiempo: 60</div>
   <button id="toggleMusic">Pausar música</button>
 
-  <div id="gameOverScreen">
-    <h2>¡Tiempo terminado!</h2>
-    <p id="finalScore"></p>
-    <button onclick="resetGame()">Reiniciar juego</button>
+  <div id="gameOverUI">
+    <div id="finalScore">Puntaje final: 0</div>
+    <button id="restartBtn">Reiniciar juego</button>
   </div>
 
   <script type="importmap">
@@ -81,20 +94,27 @@
   <script type="module">
     import * as THREE from "three";
     import { VRButton } from "three/addons/webxr/VRButton.js";
+    import { FontLoader } from "three/addons/loaders/FontLoader.js";
+    import { TextGeometry } from "three/addons/geometries/TextGeometry.js";
 
     let camera, scene, renderer, controller;
     const spheres = [], targets = [];
     let score = 0;
-    let gameEnded = false;
     const clock = new THREE.Clock();
 
+    let gameTime = 60; // segundos
+    let gameEnded = false;
+
+    // Audio
     const listener = new THREE.AudioListener();
     const audioLoader = new THREE.AudioLoader();
     const backgroundMusic = new THREE.Audio(listener);
     let soundBuffer = null;
 
-    let timeLeft = 60;
-    let timerInterval;
+    // VR HUD Group
+    let vrHUDGroup = new THREE.Group();
+    let font;
+    let vrScoreMesh, vrTimerMesh, vrInfoMesh, vrMusicMesh;
 
     init();
     animate();
@@ -149,6 +169,7 @@
       controller.addEventListener("selectstart", onSelectStart);
       scene.add(controller);
 
+      // Cargar sonidos
       audioLoader.load('Disparo.mp3', buffer => { soundBuffer = buffer; });
 
       audioLoader.load('Luz de Feria.mp3', buffer => {
@@ -168,13 +189,73 @@
         }
       });
 
+      document.getElementById("restartBtn").addEventListener("click", () => {
+        restartGame();
+      });
+
       window.addEventListener("resize", onWindowResize);
       updateScoreDisplay();
-      startTimer();
+      updateTimerDisplay();
+
+      // Cargar fuente y crear textos 3D para VR HUD
+      const fontLoader = new FontLoader();
+      fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', loadedFont => {
+        font = loadedFont;
+        createVRHUDTexts();
+      });
+    }
+
+    function createVRHUDTexts() {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+      vrScoreMesh = createTextMesh(`Puntaje: ${score}`, mat);
+      vrScoreMesh.position.set(-0.5, 0.3, -1);
+      vrHUDGroup.add(vrScoreMesh);
+
+      vrTimerMesh = createTextMesh(`Tiempo: ${Math.floor(gameTime)}`, mat);
+      vrTimerMesh.position.set(-0.5, 0.1, -1);
+      vrHUDGroup.add(vrTimerMesh);
+
+      vrInfoMesh = createTextMesh('Presiona gatillo para disparar', mat);
+      vrInfoMesh.position.set(-0.5, 0.5, -1);
+      vrHUDGroup.add(vrInfoMesh);
+
+      vrMusicMesh = createTextMesh('Música: Pausada/Reanudada en botón', mat);
+      vrMusicMesh.position.set(-0.5, -0.1, -1);
+      vrHUDGroup.add(vrMusicMesh);
+
+      scene.add(vrHUDGroup);
+    }
+
+    function createTextMesh(text, material) {
+      const geo = new TextGeometry(text, {
+        font: font,
+        size: 0.1,
+        height: 0.01,
+      });
+      return new THREE.Mesh(geo, material);
+    }
+
+    function updateVRText(mesh, newText) {
+      if (!mesh) return;
+      mesh.geometry.dispose();
+      mesh.geometry = new TextGeometry(newText, {
+        font: font,
+        size: 0.1,
+        height: 0.01,
+      });
+    }
+
+    function updateVRHUD() {
+      if (!vrHUDGroup) return;
+      const camPos = camera.getWorldPosition(new THREE.Vector3());
+      const camDir = camera.getWorldDirection(new THREE.Vector3());
+      vrHUDGroup.position.copy(camPos).add(camDir.multiplyScalar(1.5));
+      vrHUDGroup.lookAt(camPos);
     }
 
     function onSelectStart() {
-      if (gameEnded) return;
+      if (gameEnded) return; // no disparar si juego terminó
 
       const sphereGeometry = new THREE.SphereGeometry(0.05, 16, 16);
       const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ffff });
@@ -206,52 +287,70 @@
     }
 
     function render() {
-      if (gameEnded) return;
-
       const delta = clock.getDelta();
 
-      for (let i = spheres.length - 1; i >= 0; i--) {
-        const s = spheres[i];
-        s.position.addScaledVector(s.userData.velocity, delta);
-        if (s.position.length() > 30) {
-          scene.remove(s);
-          spheres.splice(i, 1);
+      if (!gameEnded) {
+        gameTime -= delta;
+        if (gameTime <= 0) {
+          gameTime = 0;
+          endGame();
         }
-      }
+        updateTimerDisplay();
+        updateVRText(vrTimerMesh, `Tiempo: ${Math.floor(gameTime)}`);
 
-      for (const target of targets) {
-        if (!target.userData.falling) {
-          target.position.add(target.userData.velocity);
-          if (Math.abs(target.position.x - target.userData.initialX) > 1.5) {
-            target.userData.velocity.x *= -1;
-          }
-        } else {
-          target.position.y -= 0.05;
-          target.userData.respawnTime -= delta;
-          if (target.position.y < -1 && target.userData.respawnTime <= 0) {
-            target.position.set(
-              target.userData.initialX,
-              0.5 + target.userData.row * 1.5,
-              -2
-            );
-            target.userData.falling = false;
-          }
-        }
-      }
+        // Mover esfera disparada
+        spheres.forEach((sphere, index) => {
+          sphere.position.addScaledVector(sphere.userData.velocity, delta);
 
-      for (let i = spheres.length - 1; i >= 0; i--) {
-        const s = spheres[i];
-        for (const target of targets) {
-          if (!target.userData.falling && s.position.distanceTo(target.position) < 0.3) {
-            target.userData.falling = true;
-            target.userData.respawnTime = 1;
-            scene.remove(s);
-            spheres.splice(i, 1);
-            score += 10;
-            updateScoreDisplay();
-            break;
+          if (sphere.position.length() > 50) {
+            scene.remove(sphere);
+            spheres.splice(index, 1);
           }
-        }
+
+          // Chequear colisiones con objetivos
+          targets.forEach(target => {
+            if (!target.userData.falling) {
+              const dist = sphere.position.distanceTo(target.position);
+              if (dist < 0.5) {
+                score++;
+                updateScoreDisplay();
+                updateVRText(vrScoreMesh, `Puntaje: ${score}`);
+
+                // Iniciar caída del objetivo
+                target.userData.falling = true;
+                target.userData.velocity.y = -0.5;
+
+                scene.remove(sphere);
+                spheres.splice(index, 1);
+              }
+            }
+          });
+        });
+
+        // Actualizar objetivos caídos
+        targets.forEach(target => {
+          if (target.userData.falling) {
+            target.position.y += target.userData.velocity.y * delta;
+            target.userData.velocity.y -= 1 * delta; // gravedad
+
+            if (target.position.y < -5) {
+              target.position.y = 0.5;
+              target.userData.falling = false;
+              target.position.x = target.userData.initialX;
+            }
+          } else {
+            // Movimiento horizontal (vaiven)
+            target.position.x += target.userData.velocity.x;
+            if (
+              target.position.x > target.userData.initialX + 1 ||
+              target.position.x < target.userData.initialX - 1
+            ) {
+              target.userData.velocity.x *= -1;
+            }
+          }
+        });
+
+        updateVRHUD();
       }
 
       renderer.render(scene, camera);
@@ -261,48 +360,41 @@
       document.getElementById("score").textContent = `Puntaje: ${score}`;
     }
 
+    function updateTimerDisplay() {
+      document.getElementById("timer").textContent = `Tiempo: ${Math.floor(gameTime)}`;
+    }
+
+    function endGame() {
+      gameEnded = true;
+      document.getElementById("gameOverUI").style.display = "block";
+      document.getElementById("finalScore").textContent = `Puntaje final: ${score}`;
+    }
+
+    function restartGame() {
+      gameEnded = false;
+      gameTime = 60;
+      score = 0;
+      document.getElementById("gameOverUI").style.display = "none";
+      updateScoreDisplay();
+      updateTimerDisplay();
+      updateVRText(vrScoreMesh, `Puntaje: ${score}`);
+      updateVRText(vrTimerMesh, `Tiempo: ${Math.floor(gameTime)}`);
+
+      // Reset targets
+      targets.forEach(target => {
+        target.position.y = 0.5;
+        target.userData.falling = false;
+        target.position.x = target.userData.initialX;
+      });
+    }
+
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
-
-    function startTimer() {
-      timerInterval = setInterval(() => {
-        timeLeft--;
-        document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
-        if (timeLeft <= 0) {
-          clearInterval(timerInterval);
-          endGame();
-        }
-      }, 1000);
-    }
-
-    function endGame() {
-      gameEnded = true;
-      document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
-      document.getElementById("gameOverScreen").style.display = "block";
-    }
-
-    window.resetGame = function () {
-      score = 0;
-      timeLeft = 60;
-      gameEnded = false;
-      document.getElementById("gameOverScreen").style.display = "none";
-      updateScoreDisplay();
-      document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
-
-      for (const s of spheres) scene.remove(s);
-      spheres.length = 0;
-
-      for (const t of targets) {
-        t.position.set(t.userData.initialX, 0.5 + t.userData.row * 1.5, -2);
-        t.userData.falling = false;
-      }
-
-      startTimer();
-    };
   </script>
 </body>
+
 </html>
 
