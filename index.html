@@ -336,6 +336,14 @@
       gameEnded = true;
       document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
       document.getElementById("gameOverScreen").style.display = "block";
+      
+      // Finalizar la sesión de VR si está activa
+      const session = renderer.xr.getSession();
+      if (session) {
+        session.end().catch(error => {
+          console.error("Error al finalizar la sesión VR:", error);
+        });
+      }
     }
 
     window.resetGame = function () {
