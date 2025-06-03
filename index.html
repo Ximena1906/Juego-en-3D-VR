@@ -33,15 +33,9 @@
     }
 
     @keyframes pulse {
-      0% {
-        box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-      }
-      50% {
-        box-shadow: 0 0 20px rgba(0, 255, 255, 1);
-      }
-      100% {
-        box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-      }
+      0% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.5); }
+      50% { box-shadow: 0 0 20px rgba(0, 255, 255, 1); }
+      100% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.5); }
     }
 
     #score, #toggleMusic, #timer {
@@ -86,7 +80,6 @@
     canvas { display: block; }
   </style>
 </head>
-
 <body>
   <div id="info">
     🎯 ¡Prepárate para jugar!<br>
@@ -131,6 +124,8 @@
     let timeLeft = 60;
     let timerInterval;
     let timerRunning = false;
+
+    let previousXRSession = null;
 
     init();
     animate();
@@ -204,51 +199,47 @@
         }
       });
 
-      renderer.xr.addEventListener("sessionstart", () => {
-        document.getElementById("toggleMusic").style.display = "none";
-        if (!timerRunning && !gameEnded) startTimer();
-      });
-
-      renderer.xr.addEventListener("sessionend", () => {
-        document.getElementById("toggleMusic").style.display = "block";
-        pauseTimer();
-      });
-
       window.addEventListener("resize", onWindowResize);
       updateScoreDisplay();
-      startTimer();
     }
 
-    function onSelectStart() {
-      if (gameEnded) return;
+    function startTimer() {
+      if (timerRunning || gameEnded) return;
+      timerRunning = true;
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          timerRunning = false;
+          endGame();
+        }
+      }, 1000);
+    }
 
-      const sphereGeometry = new THREE.SphereGeometry(0.05, 16, 16);
-      const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ffff });
-      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-
-      const tempMatrix = new THREE.Matrix4();
-      tempMatrix.identity().extractRotation(controller.matrixWorld);
-
-      const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
-      const position = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-
-      sphere.position.copy(position);
-      sphere.userData.velocity = direction.multiplyScalar(3);
-
-      if (soundBuffer) {
-        const sound = new THREE.PositionalAudio(listener);
-        sound.setBuffer(soundBuffer);
-        sound.setVolume(1);
-        sphere.add(sound);
-        sound.play();
+    function pauseTimer() {
+      if (timerRunning) {
+        clearInterval(timerInterval);
+        timerRunning = false;
       }
-
-      spheres.push(sphere);
-      scene.add(sphere);
     }
 
     function animate() {
-      renderer.setAnimationLoop(render);
+      renderer.setAnimationLoop(() => {
+        const currentSession = renderer.xr.getSession();
+        if (currentSession !== previousXRSession) {
+          previousXRSession = currentSession;
+
+          if (currentSession) {
+            document.getElementById("toggleMusic").style.display = "none";
+            startTimer();
+          } else {
+            document.getElementById("toggleMusic").style.display = "block";
+            pauseTimer();
+          }
+        }
+        render();
+      });
     }
 
     function render() {
@@ -307,33 +298,42 @@
       document.getElementById("score").textContent = `Puntaje: ${score}`;
     }
 
+    function onSelectStart() {
+      if (gameEnded) return;
+
+      const sphereGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+      const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ffff });
+      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+
+      const tempMatrix = new THREE.Matrix4();
+      tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+      const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
+      const position = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+
+      sphere.position.copy(position);
+      sphere.userData.velocity = direction.multiplyScalar(3);
+
+      if (soundBuffer) {
+        const sound = new THREE.PositionalAudio(listener);
+        sound.setBuffer(soundBuffer);
+        sound.setVolume(1);
+        sphere.add(sound);
+        sound.play();
+      }
+
+      spheres.push(sphere);
+      scene.add(sphere);
+    }
+
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    function startTimer() {
-      if (timerRunning || gameEnded) return;
-      timerRunning = true;
-      timerInterval = setInterval(() => {
-        timeLeft--;
-        document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
-        if (timeLeft <= 0) {
-          clearInterval(timerInterval);
-          endGame();
-        }
-      }, 1000);
-    }
-
-    function pauseTimer() {
-      clearInterval(timerInterval);
-      timerRunning = false;
-    }
-
     function endGame() {
       gameEnded = true;
-      pauseTimer();
       document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
       document.getElementById("gameOverScreen").style.display = "block";
     }
