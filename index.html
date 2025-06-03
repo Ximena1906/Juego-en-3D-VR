@@ -126,6 +126,10 @@
     let timerRunning = false;
 
     let previousXRSession = null;
+    
+    // Variables para los textos 3D
+    let scoreText3D, timerText3D;
+    let scoreGroup, timerGroup;
 
     init();
     animate();
@@ -199,8 +203,107 @@
         }
       });
 
+      // Crear textos 3D
+      create3DTexts();
+      
       window.addEventListener("resize", onWindowResize);
       updateScoreDisplay();
+    }
+
+    function create3DTexts() {
+      const loader = new THREE.FontLoader();
+      loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
+        // Configuración del material para los textos
+        const textMaterial = new THREE.MeshStandardMaterial({ 
+          color: 0x00ffff,
+          emissive: 0x00ffff,
+          emissiveIntensity: 0.5,
+          metalness: 0.8,
+          roughness: 0.2
+        });
+        
+        // Configuración de parámetros comunes para los textos
+        const textParams = {
+          font: font,
+          size: 0.1,
+          height: 0.02,
+          curveSegments: 12,
+          bevelEnabled: false
+        };
+        
+        // Crear grupo para el puntaje
+        scoreGroup = new THREE.Group();
+        scoreGroup.position.set(-1.5, 2, -2);
+        scene.add(scoreGroup);
+        
+        // Texto "Puntaje:"
+        const scoreLabelGeometry = new THREE.TextGeometry('Puntaje:', textParams);
+        const scoreLabelMesh = new THREE.Mesh(scoreLabelGeometry, textMaterial);
+        scoreLabelMesh.position.set(0, 0.15, 0);
+        scoreGroup.add(scoreLabelMesh);
+        
+        // Valor del puntaje
+        scoreText3D = new THREE.Mesh(new THREE.TextGeometry(score.toString(), textParams), textMaterial);
+        scoreText3D.position.set(0, 0, 0);
+        scoreGroup.add(scoreText3D);
+        
+        // Crear grupo para el temporizador
+        timerGroup = new THREE.Group();
+        timerGroup.position.set(1.5, 2, -2);
+        scene.add(timerGroup);
+        
+        // Texto "Tiempo:"
+        const timerLabelGeometry = new THREE.TextGeometry('Tiempo:', textParams);
+        const timerLabelMesh = new THREE.Mesh(timerLabelGeometry, textMaterial);
+        timerLabelMesh.position.set(0, 0.15, 0);
+        timerGroup.add(timerLabelMesh);
+        
+        // Valor del temporizador
+        timerText3D = new THREE.Mesh(new THREE.TextGeometry(timeLeft.toString(), textParams), textMaterial);
+        timerText3D.position.set(0, 0, 0);
+        timerGroup.add(timerText3D);
+        
+        // Actualizar los textos 3D
+        update3DTexts();
+      });
+    }
+    
+    function update3DTexts() {
+      if (scoreText3D && timerText3D) {
+        // Eliminar los textos antiguos
+        scoreGroup.remove(scoreText3D);
+        timerGroup.remove(timerText3D);
+        
+        // Crear nuevos textos con los valores actualizados
+        const loader = new THREE.FontLoader();
+        loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
+          const textMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x00ffff,
+            emissive: 0x00ffff,
+            emissiveIntensity: 0.5,
+            metalness: 0.8,
+            roughness: 0.2
+          });
+          
+          const textParams = {
+            font: font,
+            size: 0.1,
+            height: 0.02,
+            curveSegments: 12,
+            bevelEnabled: false
+          };
+          
+          // Actualizar puntaje
+          scoreText3D = new THREE.Mesh(new THREE.TextGeometry(score.toString(), textParams), textMaterial);
+          scoreText3D.position.set(0, 0, 0);
+          scoreGroup.add(scoreText3D);
+          
+          // Actualizar temporizador
+          timerText3D = new THREE.Mesh(new THREE.TextGeometry(timeLeft.toString(), textParams), textMaterial);
+          timerText3D.position.set(0, 0, 0);
+          timerGroup.add(timerText3D);
+        });
+      }
     }
 
     function startTimer() {
@@ -209,6 +312,7 @@
       timerInterval = setInterval(() => {
         timeLeft--;
         document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
+        update3DTexts();
         if (timeLeft <= 0) {
           clearInterval(timerInterval);
           timerRunning = false;
@@ -286,6 +390,7 @@
             spheres.splice(i, 1);
             score += 10;
             updateScoreDisplay();
+            update3DTexts();
             break;
           }
         }
@@ -336,6 +441,12 @@
       gameEnded = true;
       document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
       document.getElementById("gameOverScreen").style.display = "block";
+      
+      // Salir del modo VR cuando el tiempo se acabe
+      const session = renderer.xr.getSession();
+      if (session) {
+        session.end().catch(console.error);
+      }
     }
 
     window.resetGame = function () {
@@ -345,6 +456,7 @@
       document.getElementById("gameOverScreen").style.display = "none";
       updateScoreDisplay();
       document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
+      update3DTexts();
 
       for (const s of spheres) scene.remove(s);
       spheres.length = 0;
