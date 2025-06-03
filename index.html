@@ -337,18 +337,11 @@
       document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
       document.getElementById("gameOverScreen").style.display = "block";
       
-      // Finalizar la sesión de VR si está activa
+      // Añadido: Salir del modo VR cuando el tiempo se acabe
       const session = renderer.xr.getSession();
       if (session) {
-        session.end().catch(error => {
-          console.error("Error al finalizar la sesión VR:", error);
-        });
+        session.end().catch(console.error);
       }
-      
-      // Mostrar elementos de la interfaz en 2D
-      document.getElementById("score").style.display = "block";
-      document.getElementById("timer").style.display = "block";
-      document.getElementById("toggleMusic").style.display = "block";
     }
 
     window.resetGame = function () {
@@ -358,10 +351,6 @@
       document.getElementById("gameOverScreen").style.display = "none";
       updateScoreDisplay();
       document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
-
-      // Asegurarse de que los elementos de la interfaz estén visibles
-      document.getElementById("score").style.display = "block";
-      document.getElementById("timer").style.display = "block";
 
       for (const s of spheres) scene.remove(s);
       spheres.length = 0;
