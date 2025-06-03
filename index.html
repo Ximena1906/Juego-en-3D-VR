@@ -130,6 +130,7 @@
 
     let timeLeft = 60;
     let timerInterval;
+    let timerRunning = false;
 
     init();
     animate();
@@ -201,6 +202,16 @@
           backgroundMusic.play();
           document.getElementById("toggleMusic").textContent = "Pausar música";
         }
+      });
+
+      renderer.xr.addEventListener("sessionstart", () => {
+        document.getElementById("toggleMusic").style.display = "none";
+        if (!timerRunning && !gameEnded) startTimer();
+      });
+
+      renderer.xr.addEventListener("sessionend", () => {
+        document.getElementById("toggleMusic").style.display = "block";
+        pauseTimer();
       });
 
       window.addEventListener("resize", onWindowResize);
@@ -303,6 +314,8 @@
     }
 
     function startTimer() {
+      if (timerRunning || gameEnded) return;
+      timerRunning = true;
       timerInterval = setInterval(() => {
         timeLeft--;
         document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
@@ -313,8 +326,14 @@
       }, 1000);
     }
 
+    function pauseTimer() {
+      clearInterval(timerInterval);
+      timerRunning = false;
+    }
+
     function endGame() {
       gameEnded = true;
+      pauseTimer();
       document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
       document.getElementById("gameOverScreen").style.display = "block";
     }
