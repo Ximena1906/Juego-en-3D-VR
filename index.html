@@ -336,12 +336,6 @@
       gameEnded = true;
       document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
       document.getElementById("gameOverScreen").style.display = "block";
-      
-      // Salir del modo VR cuando el tiempo se acaba
-      const session = renderer.xr.getSession();
-      if (session) {
-        session.end().catch(console.error);
-      }
     }
 
     window.resetGame = function () {
