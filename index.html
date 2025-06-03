@@ -38,15 +38,22 @@
       100% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.5); }
     }
 
-    #toggleMusic {
+    #score, #toggleMusic, #timer {
       position: absolute;
       left: 10px;
-      top: 10px;
       z-index: 1;
       background: rgba(0, 0, 0, 0.6);
       padding: 10px;
       border-radius: 5px;
-      cursor: pointer;
+    }
+
+    #score { top: 70px; font-size: 1.2em; }
+    #toggleMusic { top: 110px; cursor: pointer; }
+    #timer {
+      top: 150px;
+      font-size: 1.2em;
+      left: auto;
+      right: 10px;
     }
 
     #gameOverScreen {
@@ -80,6 +87,8 @@
     entra en VR y presiona el gatillo para disparar.<br>
     ¡Buena suerte!
   </div>
+  <div id="score">Puntaje: 0</div>
+  <div id="timer">Tiempo: 60</div>
   <button id="toggleMusic">Pausar música</button>
 
   <div id="gameOverScreen">
@@ -100,8 +109,6 @@
   <script type="module">
     import * as THREE from "three";
     import { VRButton } from "three/addons/webxr/VRButton.js";
-    import { TextGeometry } from "three/addons/geometries/TextGeometry.js";
-    import { FontLoader } from "three/addons/loaders/FontLoader.js";
 
     let camera, scene, renderer, controller;
     const spheres = [], targets = [];
@@ -119,7 +126,6 @@
     let timerRunning = false;
 
     let previousXRSession = null;
-    let scoreTextMesh, timerTextMesh;
 
     init();
     animate();
@@ -142,11 +148,6 @@
       light.position.set(0, 1, 0);
       scene.add(light);
 
-      // Luz direccional adicional para mejor iluminación del texto
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-      directionalLight.position.set(0, 1, 1);
-      scene.add(directionalLight);
-
       const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(10, 10),
         new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 1, metalness: 0 })
@@ -154,7 +155,6 @@
       floor.rotation.x = -Math.PI / 2;
       scene.add(floor);
 
-      // Crear objetivos
       const filas = 2, columnas = 5, espaciadoX = 1.8, espaciadoY = 1.5;
       for (let i = 0; i < filas; i++) {
         for (let j = 0; j < columnas; j++) {
@@ -180,12 +180,6 @@
       controller.addEventListener("selectstart", onSelectStart);
       scene.add(controller);
 
-      // Cargar fuentes y crear textos 3D (solo puntaje y temporizador)
-      const fontLoader = new FontLoader();
-      fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
-        create3DText(font);
-      });
-
       audioLoader.load('Disparo.mp3', buffer => { soundBuffer = buffer; });
 
       audioLoader.load('Luz de Feria.mp3', buffer => {
@@ -206,73 +200,7 @@
       });
 
       window.addEventListener("resize", onWindowResize);
-    }
-
-    function create3DText(font) {
-      // Texto de puntaje
-      const scoreTextGeometry = new TextGeometry("Puntaje: 0", {
-        font: font,
-        size: 0.08,
-        height: 0.02
-      });
-      scoreTextGeometry.computeBoundingBox();
-      const scoreTextMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
-      scoreTextMesh = new THREE.Mesh(scoreTextGeometry, scoreTextMaterial);
-      scoreTextMesh.position.set(-1.8, 1.3, -2);
-      
-      // Fondo para el puntaje
-      const scoreBackground = new THREE.Mesh(
-        new THREE.PlaneGeometry(
-          scoreTextGeometry.boundingBox.max.x - scoreTextGeometry.boundingBox.min.x + 0.2,
-          scoreTextGeometry.boundingBox.max.y - scoreTextGeometry.boundingBox.min.y + 0.2
-        ),
-        new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0.7, transparent: true })
-      );
-      scoreBackground.position.copy(scoreTextMesh.position);
-      scoreBackground.position.z -= 0.01;
-      scene.add(scoreBackground);
-      scene.add(scoreTextMesh);
-
-      // Texto de temporizador
-      const timerTextGeometry = new TextGeometry("Tiempo: 60", {
-        font: font,
-        size: 0.08,
-        height: 0.02
-      });
-      timerTextGeometry.computeBoundingBox();
-      const timerTextMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
-      timerTextMesh = new THREE.Mesh(timerTextGeometry, timerTextMaterial);
-      timerTextMesh.position.set(1.2, 1.3, -2);
-      
-      // Fondo para el temporizador
-      const timerBackground = new THREE.Mesh(
-        new THREE.PlaneGeometry(
-          timerTextGeometry.boundingBox.max.x - timerTextGeometry.boundingBox.min.x + 0.2,
-          timerTextGeometry.boundingBox.max.y - timerTextGeometry.boundingBox.min.y + 0.2
-        ),
-        new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0.7, transparent: true })
-      );
-      timerBackground.position.copy(timerTextMesh.position);
-      timerBackground.position.z -= 0.01;
-      scene.add(timerBackground);
-      scene.add(timerTextMesh);
-    }
-
-    function updateScoreDisplay() {
-      if (scoreTextMesh) {
-        scene.remove(scoreTextMesh);
-        const fontLoader = new FontLoader();
-        fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
-          const geometry = new TextGeometry(`Puntaje: ${score}`, {
-            font: font,
-            size: 0.08,
-            height: 0.02
-          });
-          scoreTextMesh = new THREE.Mesh(geometry, scoreTextMesh.material);
-          scoreTextMesh.position.set(-1.8, 1.3, -2);
-          scene.add(scoreTextMesh);
-        });
-      }
+      updateScoreDisplay();
     }
 
     function startTimer() {
@@ -280,20 +208,7 @@
       timerRunning = true;
       timerInterval = setInterval(() => {
         timeLeft--;
-        if (timerTextMesh) {
-          scene.remove(timerTextMesh);
-          const fontLoader = new FontLoader();
-          fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
-            const geometry = new TextGeometry(`Tiempo: ${timeLeft}`, {
-              font: font,
-              size: 0.08,
-              height: 0.02
-            });
-            timerTextMesh = new THREE.Mesh(geometry, timerTextMesh.material);
-            timerTextMesh.position.set(1.2, 1.3, -2);
-            scene.add(timerTextMesh);
-          });
-        }
+        document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
         if (timeLeft <= 0) {
           clearInterval(timerInterval);
           timerRunning = false;
@@ -317,11 +232,9 @@
 
           if (currentSession) {
             document.getElementById("toggleMusic").style.display = "none";
-            document.getElementById("info").style.display = "none"; // Ocultar instrucciones en VR
             startTimer();
           } else {
             document.getElementById("toggleMusic").style.display = "block";
-            document.getElementById("info").style.display = "block"; // Mostrar instrucciones al salir de VR
             pauseTimer();
           }
         }
@@ -381,6 +294,10 @@
       renderer.render(scene, camera);
     }
 
+    function updateScoreDisplay() {
+      document.getElementById("score").textContent = `Puntaje: ${score}`;
+    }
+
     function onSelectStart() {
       if (gameEnded) return;
 
@@ -427,6 +344,7 @@
       gameEnded = false;
       document.getElementById("gameOverScreen").style.display = "none";
       updateScoreDisplay();
+      document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
 
       for (const s of spheres) scene.remove(s);
       spheres.length = 0;
