@@ -126,6 +126,7 @@
     let timerRunning = false;
 
     let previousXRSession = null;
+    let vrButton = null;
 
     init();
     animate();
@@ -142,7 +143,10 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
-      document.body.appendChild(VRButton.createButton(renderer));
+      
+      // Guardamos la referencia al botón VR
+      vrButton = VRButton.createButton(renderer);
+      document.body.appendChild(vrButton);
 
       const light = new THREE.HemisphereLight(0xffffff, 0x444444);
       light.position.set(0, 1, 0);
@@ -337,11 +341,32 @@
       document.getElementById("finalScore").textContent = `Tu puntaje final fue: ${score}`;
       document.getElementById("gameOverScreen").style.display = "block";
       
-      // Finalizar la sesión de VR si está activa
+      // Finalizar la sesión de VR de manera más robusta
       const session = renderer.xr.getSession();
       if (session) {
-        session.end();
+        session.end().then(() => {
+          // Forzar la salida del modo VR
+          renderer.xr.enabled = false;
+          if (vrButton) {
+            vrButton.textContent = "ENTRAR EN VR";
+            vrButton.onclick = function() {
+              renderer.xr.enabled = true;
+              vrButton.textContent = "SALIR DE VR";
+              vrButton.onclick = null;
+              document.body.appendChild(vrButton);
+              renderer.xr.getSession().end();
+            };
+          }
+        }).catch(err => {
+          console.error("Error al finalizar sesión VR:", err);
+        });
       }
+      
+      // Detener el bucle de renderizado
+      renderer.setAnimationLoop(null);
+      
+      // Mostrar elementos ocultos durante VR
+      document.getElementById("toggleMusic").style.display = "block";
     }
 
     window.resetGame = function () {
@@ -352,6 +377,19 @@
       updateScoreDisplay();
       document.getElementById("timer").textContent = `Tiempo: ${timeLeft}`;
 
+      // Restablecer la configuración VR
+      renderer.xr.enabled = true;
+      if (vrButton) {
+        vrButton.textContent = "ENTRAR EN VR";
+        vrButton.onclick = function() {
+          renderer.xr.enabled = true;
+          vrButton.textContent = "SALIR DE VR";
+          vrButton.onclick = null;
+          document.body.appendChild(vrButton);
+          renderer.xr.getSession().end();
+        };
+      }
+
       for (const s of spheres) scene.remove(s);
       spheres.length = 0;
 
@@ -360,6 +398,8 @@
         t.userData.falling = false;
       }
 
+      // Reiniciar el bucle de renderizado
+      animate();
       startTimer();
     };
   </script>
